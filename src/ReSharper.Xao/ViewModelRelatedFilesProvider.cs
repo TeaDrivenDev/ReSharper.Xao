@@ -17,11 +17,15 @@ namespace ReSharper.Xao
     {
         private static readonly string[] ViewSuffixes = { "View", "Flyout", "UserControl", "Page" };
 
+        private static readonly string[] TestSuffixes = { "Test", "Tests" };
+
         public IEnumerable<Tuple<IProjectFile, string, IProjectFile>> GetRelatedFiles(IProjectFile projectFile)
         {
             var typeNamesInFile = GetTypeNamesDefinedInFile(projectFile).ToList();
 
-            var candidateTypeNames = GetTypeCandidates(typeNamesInFile);
+            var candidateTypeNames =
+                GetMvvmTypeCandidates(typeNamesInFile)
+                .Concat(GetTestTypeCandidates(typeNamesInFile));
 
             // Look for the candidate types in the solution.
             var solution = projectFile.GetSolution();
@@ -61,7 +65,11 @@ namespace ReSharper.Xao
                     fn = fn.Substring(0, dotPos);
                 }
 
-                var display = fn.EndsWith("ViewModel") ? "ViewModel" : "View";
+                var display = fn.EndsWith("ViewModel")
+                    ? "ViewModel"
+                    : ViewSuffixes.Any(fn.EndsWith)
+                        ? "View"
+                        : TestSuffixes.Any(fn.EndsWith) ? "Tests" : "Implementation";
 
                 var projectName = GetProjectName(file);
 
@@ -88,7 +96,7 @@ namespace ReSharper.Xao
             return ((IProject)projectItem).Name;
         }
 
-        private IEnumerable<string> GetTypeCandidates(IEnumerable<string> typeNamesInFile)
+        private IEnumerable<string> GetMvvmTypeCandidates(IEnumerable<string> typeNamesInFile)
         {
             var candidates = new List<string>();
 
@@ -120,6 +128,36 @@ namespace ReSharper.Xao
 
                         // Just add ViewModel
                         candidate = typeName + "ViewModel";
+                        candidates.Add(candidate);
+                    }
+                }
+            }
+
+            return candidates;
+        }
+
+        private IEnumerable<string> GetTestTypeCandidates(IEnumerable<string> typeNamesInFile)
+        {
+            var candidates = new List<string>();
+
+            // For each type name in the file, create a list of candidates.
+            foreach (var typeName in typeNamesInFile)
+            {
+                // If a view model...
+                if (!TestSuffixes.Any(s => typeName.EndsWith(s, StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Remove ViewModel from end and add all the possible suffixes.
+                    var baseName = typeName;
+                    candidates.AddRange(TestSuffixes.Select(suffix => baseName + suffix));
+                }
+
+                foreach (var suffix in TestSuffixes)
+                {
+                    if (typeName.EndsWith(suffix))
+                    {
+                        // Remove suffix and add ViewModel.
+                        var baseName = typeName.Substring(0, typeName.Length - suffix.Length);
+                        var candidate = baseName;
                         candidates.Add(candidate);
                     }
                 }
